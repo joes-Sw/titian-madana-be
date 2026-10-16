@@ -9,7 +9,7 @@ from app.schemas.tender import (
 )
 from app.schemas.user import (
     LoginRequest,
-    RoleInfoOut,
+    Role,
     TokenOut,
     UserOut,
 )
@@ -25,5 +25,5 @@ __all__ = [
     "LoginRequest",
     "TokenOut",
     "UserOut",
-    "RoleInfoOut",
+    "Role",
 ]

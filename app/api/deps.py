@@ -1,3 +1,14 @@
+"""Dependency FastAPI untuk autentikasi dan otorisasi berbasis role.
+
+Cara pakai di sebuah endpoint:
+
+    # Wajib login (semua role)
+    def endpoint(user: User = Depends(get_current_user)): ...
+
+    # Wajib login DAN role tertentu
+    def endpoint(user: User = Depends(require_roles("superadmin", "manager"))): ...
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -12,6 +23,7 @@ from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models import User
 
+# auto_error=False agar kita bisa mengembalikan pesan 401 sendiri (bukan default).
 bearer_scheme = HTTPBearer(auto_error=False)
 
 _CREDENTIALS_EXC = HTTPException(
@@ -25,6 +37,12 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    """Ambil user dari header ``Authorization: Bearer <token>``.
+
+    Alur: cek header ada -> decode & verifikasi JWT -> cari user di DB ->
+    pastikan akun masih aktif. Melempar HTTP 401 bila token tidak ada/valid/
+    kedaluwarsa, dan HTTP 403 bila akun dinonaktifkan.
+    """
     if credentials is None or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -58,6 +76,12 @@ def get_current_user(
 
 
 def require_roles(*roles: str) -> Callable[..., User]:
+    """Factory dependency: izinkan akses hanya untuk role yang disebutkan.
+
+    Contoh: ``Depends(require_roles("superadmin", "manager"))``. Bila user
+    login tetapi role-nya tidak termasuk, dikembalikan HTTP 403.
+    """
+
     def _checker(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
             raise HTTPException(

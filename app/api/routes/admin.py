@@ -15,7 +15,16 @@ from app.scraper.service import SCRAPE_LOCK, ScraperService
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.post("/scrape", response_model=ScrapeRunOut)
+@router.post(
+    "/scrape",
+    response_model=ScrapeRunOut,
+    summary="Jalankan scrape manual",
+    responses={
+        401: {"description": "Belum login / token tidak valid"},
+        403: {"description": "Role tidak diizinkan (hanya superadmin & manager)"},
+        409: {"description": "Scrape lain sedang berjalan"},
+    },
+)
 def trigger_scrape(
     db: Session = Depends(get_db),
     _: object = Depends(require_roles(ROLE_SUPERADMIN, ROLE_MANAGER)),
@@ -25,6 +34,12 @@ def trigger_scrape(
     detail: bool = Query(default=True),
     limit: int | None = Query(default=None, description="batasi jumlah paket (uji coba)"),
 ) -> ScrapeRun:
+    """Trigger scraping SPSE secara manual.
+
+    Hanya dapat diakses role **superadmin** dan **manager**. Mengembalikan
+    ringkasan run (jumlah records). Diblokir dengan HTTP 409 bila ada proses
+    scrape lain yang masih berjalan.
+    """
     if not SCRAPE_LOCK.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="Scrape sedang berjalan")
     try:
@@ -36,11 +51,21 @@ def trigger_scrape(
         SCRAPE_LOCK.release()
 
 
-@router.get("/scrape/runs", response_model=list[ScrapeRunOut])
+@router.get(
+    "/scrape/runs",
+    response_model=list[ScrapeRunOut],
+    summary="Riwayat scrape",
+    responses={401: {"description": "Belum login / token tidak valid"}},
+)
 def list_scrape_runs(
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
     limit: int = Query(default=20, ge=1, le=200),
 ) -> list[ScrapeRun]:
+    """Daftar riwayat scrape terbaru.
+
+    Dapat diakses oleh semua role yang sudah login (superadmin, manager,
+    marketing).
+    """
     stmt = select(ScrapeRun).order_by(ScrapeRun.id.desc()).limit(limit)
     return list(db.scalars(stmt).all())
