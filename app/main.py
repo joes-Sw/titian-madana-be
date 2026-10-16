@@ -4,11 +4,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
-from app.api.routes import admin, stats, tenders
+from app.api.routes import admin, auth, stats, tenders
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.db.session import init_db
+from app.core.seed import seed_default_users
+from app.db.session import SessionLocal, init_db
 from app.scheduler.jobs import shutdown_scheduler, start_scheduler
 
 
@@ -16,6 +18,10 @@ from app.scheduler.jobs import shutdown_scheduler, start_scheduler
 async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
+    with SessionLocal() as db:
+        created = seed_default_users(db)
+    if created:
+        logger.info("Akun dummy dibuat: {}", ", ".join(created))
     if settings.scheduler_enabled:
         start_scheduler()
     yield
@@ -32,6 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api")
 app.include_router(tenders.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")

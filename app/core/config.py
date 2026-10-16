@@ -24,5 +24,9 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Auth
+    secret_key: str = "change-me-in-production-please-use-a-long-random-string"
+    access_token_expire_minutes: int = 60 * 8
+
 
 settings = Settings()
