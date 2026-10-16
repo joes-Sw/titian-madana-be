@@ -1,3 +1,12 @@
+"""Seeding akun dummy untuk keperluan uji coba login.
+
+Dipanggil otomatis saat aplikasi start (lihat ``app/main.py``) dan bisa juga
+dijalankan manual lewat ``python -m scripts.seed_users``.
+
+PENTING: Password default di bawah hanya untuk development. Ganti sebelum
+deploy ke production.
+"""
+
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -11,6 +20,7 @@ from app.core.security import (
 )
 from app.models import User
 
+# Daftar akun dummy: satu untuk tiap role.
 DEFAULT_USERS: tuple[dict[str, str], ...] = (
     {
         "username": "superadmin",
@@ -34,7 +44,11 @@ DEFAULT_USERS: tuple[dict[str, str], ...] = (
 
 
 def seed_default_users(db: Session) -> list[str]:
-    """Buat akun dummy bila belum ada. Idempotent, mengembalikan username baru."""
+    """Buat akun dummy yang belum ada. Bersifat idempotent.
+
+    Akun yang sudah ada (berdasarkan ``username``) tidak akan ditimpa, sehingga
+    aman dipanggil berulang kali. Mengembalikan daftar username yang baru dibuat.
+    """
     created: list[str] = []
     for item in DEFAULT_USERS:
         exists = db.scalar(select(User).where(User.username == item["username"]))

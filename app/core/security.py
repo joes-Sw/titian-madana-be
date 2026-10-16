@@ -1,3 +1,16 @@
+"""Utilitas keamanan untuk autentikasi.
+
+Modul ini menyediakan dua hal utama:
+
+1. **Hashing password** menggunakan PBKDF2-HMAC-SHA256 (modul bawaan Python,
+   tanpa dependency eksternal). Format hash yang disimpan:
+   ``pbkdf2_sha256$<iterasi>$<salt_base64>$<digest_base64>``.
+
+2. **Token akses (JWT)** ber-algoritma HS256 yang ditandatangani dengan
+   ``settings.secret_key``. Payload token berisi ``sub`` (username), ``role``,
+   ``iat`` (waktu dibuat) dan ``exp`` (waktu kedaluwarsa).
+"""
+
 from __future__ import annotations
 
 import base64
@@ -13,17 +26,24 @@ from app.core.config import settings
 
 ALGORITHM = "HS256"
 
+# Daftar role yang dikenali aplikasi.
 ROLE_SUPERADMIN = "superadmin"
 ROLE_MANAGER = "manager"
 ROLE_MARKETING = "marketing"
 
 VALID_ROLES: tuple[str, ...] = (ROLE_SUPERADMIN, ROLE_MANAGER, ROLE_MARKETING)
 
+# Parameter PBKDF2. Iterasi tinggi = brute-force makin mahal.
 _PBKDF2_ITERATIONS = 240_000
 _SALT_BYTES = 16
 
 
 def hash_password(password: str) -> str:
+    """Ubah password plaintext menjadi hash PBKDF2 yang aman disimpan di DB.
+
+    Salt dibuat acak setiap kali dipanggil sehingga dua password identik akan
+    menghasilkan hash berbeda.
+    """
     salt = os.urandom(_SALT_BYTES)
     digest = hashlib.pbkdf2_hmac(
         "sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS
@@ -36,6 +56,12 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    """Cek apakah ``password`` cocok dengan ``hashed`` yang tersimpan.
+
+    Mengembalikan ``False`` untuk hash yang rusak/format tidak dikenal
+    (tidak melempar exception) dan memakai perbandingan konstan-waktu
+    (``hmac.compare_digest``) untuk mencegah timing attack.
+    """
     try:
         algorithm, iterations, salt_b64, digest_b64 = hashed.split("$", 3)
         if algorithm != "pbkdf2_sha256":
@@ -53,6 +79,12 @@ def verify_password(password: str, hashed: str) -> bool:
 def create_access_token(
     subject: str, role: str, expires_delta: timedelta | None = None
 ) -> str:
+    """Buat JWT untuk user yang berhasil login.
+
+    ``subject`` diisi username dan ``role`` diisi role user, sehingga endpoint
+    lain bisa menentukan hak akses tanpa query DB lagi. Bila ``expires_delta``
+    tidak diisi, masa berlaku diambil dari ``settings.access_token_expire_minutes``.
+    """
     now = datetime.now(timezone.utc)
     expire = now + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
@@ -67,4 +99,10 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
+    """Verifikasi tanda tangan + masa berlaku token dan kembalikan payload-nya.
+
+    Melempar ``jwt.PyJWTError`` (mis. ``ExpiredSignatureError``,
+    ``InvalidSignatureError``) bila token tidak valid. Exception ini ditangkap
+    oleh dependency ``get_current_user`` dan diubah menjadi HTTP 401.
+    """
     return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
