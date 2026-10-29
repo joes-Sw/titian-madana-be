@@ -1,6 +1,7 @@
 # Dokumentasi API Autentikasi & Role
 
-Panduan ini untuk tim Frontend agar dapat memakai fitur login berbasis role.
+Panduan ini untuk tim Frontend agar dapat memakai fitur registrasi dan login
+berbasis role.
 
 - Base URL (dev): `http://localhost:8000`
 - Semua endpoint API diawali prefix `/api`
@@ -9,8 +10,10 @@ Panduan ini untuk tim Frontend agar dapat memakai fitur login berbasis role.
 
 ## Ringkasan
 
-- Login memakai **username + password + konfirmasi password**.
-- **Tidak ada endpoint registrasi.** Akun dibuat oleh backend (seeding).
+- **Registrasi** membuat akun baru dengan role `manager` atau `marketing`
+  (role `superadmin` hanya dibuat lewat seeding).
+- **Login** memakai **username + password** (tanpa konfirmasi password).
+- **Tidak ada** endpoint untuk membuat akun `superadmin` dari publik.
 - Tersedia **3 role**: `superadmin`, `manager`, `marketing`.
 - Login sukses mengembalikan **JWT**. Token dikirim di header
   `Authorization: Bearer <token>` untuk endpoint yang dilindungi.
@@ -28,7 +31,87 @@ Panduan ini untuk tim Frontend agar dapat memakai fitur login berbasis role.
 
 ---
 
-## 1. Login
+## 1. Registrasi
+
+`POST /api/auth/register`
+
+Membuat akun baru. Endpoint ini **publik** (belum perlu login).
+
+### Request body
+
+| Field | Tipe | Wajib | Keterangan |
+|-------|------|-------|------------|
+| `username` | string | ya | Unik, minimal 3 karakter, tanpa spasi. Otomatis di-*trim* & lowercase. |
+| `full_name` | string \| null | tidak | Nama tampilan, maksimal 128 karakter. |
+| `password` | string | ya | Minimal 8 karakter, **harus mengandung huruf dan angka**. |
+| `confirm_password` | string | ya | Wajib sama persis dengan `password`. |
+| `role` | string | tidak | `manager` atau `marketing`. Default `marketing`. |
+
+Contoh:
+
+```json
+{
+  "username": "budi",
+  "full_name": "Budi Santoso",
+  "password": "Budi12345",
+  "confirm_password": "Budi12345",
+  "role": "marketing"
+}
+```
+
+### Respons sukses — `201 Created`
+
+```json
+{
+  "id": 4,
+  "username": "budi",
+  "role": "marketing",
+  "full_name": "Budi Santoso",
+  "is_active": true,
+  "created_at": "2026-01-02T09:30:00"
+}
+```
+
+### Contoh JavaScript (fetch)
+
+```js
+async function register({ username, fullName, password, confirmPassword, role }) {
+  const res = await fetch("http://localhost:8000/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username,
+      full_name: fullName,
+      password,
+      confirm_password: confirmPassword,
+      role, // "manager" | "marketing" (opsional)
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(typeof err.detail === "string" ? err.detail : "Validasi gagal");
+  }
+  return res.json();
+}
+```
+
+### Kemungkinan error
+
+| Status | Penyebab | `detail` |
+|--------|----------|----------|
+| `409` | Username sudah dipakai | `Username sudah digunakan` |
+| `422` | Password lemah / konfirmasi beda / role `superadmin` / username tidak valid | array error validasi |
+
+Contoh respons `409`:
+
+```json
+{ "detail": "Username sudah digunakan" }
+```
+
+---
+
+## 2. Login
 
 `POST /api/auth/login`
 
@@ -38,15 +121,13 @@ Panduan ini untuk tim Frontend agar dapat memakai fitur login berbasis role.
 |-------|------|-------|------------|
 | `username` | string | ya | Minimal 3 karakter, tanpa spasi. Otomatis di-*trim* & lowercase. |
 | `password` | string | ya | Minimal 6 karakter. |
-| `confirm_password` | string | ya | Wajib sama persis dengan `password`. |
 
 Contoh:
 
 ```json
 {
   "username": "superadmin",
-  "password": "Superadmin#123",
-  "confirm_password": "Superadmin#123"
+  "password": "Superadmin#123"
 }
 ```
 
@@ -75,15 +156,11 @@ Contoh:
 ### Contoh JavaScript (fetch)
 
 ```js
-async function login(username, password, confirmPassword) {
+async function login(username, password) {
   const res = await fetch("http://localhost:8000/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      username,
-      password,
-      confirm_password: confirmPassword,
-    }),
+    body: JSON.stringify({ username, password }),
   });
 
   if (!res.ok) {
@@ -99,7 +176,7 @@ async function login(username, password, confirmPassword) {
 ```bash
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"manager","password":"Manager#123","confirm_password":"Manager#123"}'
+  -d '{"username":"manager","password":"Manager#123"}'
 ```
 
 ### Kemungkinan error
@@ -109,7 +186,7 @@ curl -X POST http://localhost:8000/api/auth/login \
 | `401` | Username tidak ada **atau** password salah | `Username atau password salah` |
 | `403` | Akun dinonaktifkan (`is_active=false`) | `Akun tidak aktif, hubungi superadmin` |
 | `403` | Role user tidak dikenali | `Role '<role>' tidak dikenali` |
-| `422` | Body tidak valid (password beda, password/username terlalu pendek, username ada spasi) | array error validasi |
+| `422` | Body tidak valid (username/password terlalu pendek, username ada spasi) | array error validasi |
 
 Contoh respons `401`:
 
@@ -117,24 +194,9 @@ Contoh respons `401`:
 { "detail": "Username atau password salah" }
 ```
 
-Contoh respons `422` (contoh password tidak sama):
-
-```json
-{
-  "detail": [
-    {
-      "type": "value_error",
-      "loc": ["body"],
-      "msg": "Value error, Password dan konfirmasi password tidak sama",
-      "input": { "username": "manager", "password": "Manager#123", "confirm_password": "Manager#999" }
-    }
-  ]
-}
-```
-
 ---
 
-## 2. Profil user yang sedang login
+## 3. Profil user yang sedang login
 
 `GET /api/auth/me`
 
@@ -166,11 +228,12 @@ Berguna untuk memvalidasi token saat reload halaman dan mengambil data user.
 
 ---
 
-## 3. Matriks hak akses
+## 4. Matriks hak akses
 
-| Endpoint | Metode | Role yang diizinkan |
-|----------|--------|---------------------|
-| `/api/auth/login` | POST | publik (belum login) |
+| Endpoint | Metode | Akses |
+|----------|--------|-------|
+| `/api/auth/register` | POST | publik |
+| `/api/auth/login` | POST | publik |
 | `/api/auth/me` | GET | semua yang sudah login |
 | `/api/admin/scrape` | POST | `superadmin`, `manager` |
 | `/api/admin/scrape/runs` | GET | semua yang sudah login |
@@ -187,12 +250,12 @@ Bila login tetapi role tidak berhak, backend mengembalikan:
 
 ---
 
-## 4. Panduan integrasi di Frontend
+## 5. Panduan integrasi di Frontend
 
 ### a. Simpan token & role setelah login
 
 ```js
-const data = await login(username, password, confirmPassword);
+const data = await login(username, password);
 localStorage.setItem("token", data.access_token);
 localStorage.setItem("role", data.role);
 ```
@@ -255,6 +318,7 @@ async function restoreSession() {
 - `401` = belum login / token tidak valid atau kedaluwarsa → arahkan ke halaman login.
 - `403` = sudah login tapi tidak punya hak → sembunyikan/disable tombolnya juga di UI
   (backend tetap jadi penentu akhir).
+- Saat registrasi, jangan sediakan pilihan `superadmin` di dropdown role.
 - Simpan token di `localStorage` untuk kemudahan, atau `httpOnly cookie` bila butuh
   keamanan lebih (perlu penyesuaian di backend).
 - Waktu kedaluwarsa token ada di field `expires_in` (detik).

@@ -11,8 +11,9 @@ from app.db.base import Base
 class User(Base):
     """Akun pengguna aplikasi.
 
-    Akun dibuat lewat seeding (``app/core/seed.py``) atau script
-    ``scripts/seed_users.py``; tidak ada endpoint registrasi publik.
+    Akun dapat dibuat lewat endpoint registrasi (khusus role ``manager`` dan
+    ``marketing``) atau lewat seeding (``app/core/seed.py`` /
+    ``scripts/seed_users.py``) untuk akun ``superadmin``.
     Kolom ``role`` menentukan hak akses dan harus salah satu dari
     ``superadmin`` / ``manager`` / ``marketing`` (lihat
     ``app/core/security.py``).

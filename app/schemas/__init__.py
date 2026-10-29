@@ -9,6 +9,7 @@ from app.schemas.tender import (
 )
 from app.schemas.user import (
     LoginRequest,
+    RegisterRequest,
     Role,
     TokenOut,
     UserOut,
@@ -23,6 +24,7 @@ __all__ = [
     "ScrapeRunOut",
     "StatsOut",
     "LoginRequest",
+    "RegisterRequest",
     "TokenOut",
     "UserOut",
     "Role",
