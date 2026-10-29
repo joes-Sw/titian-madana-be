@@ -4,7 +4,7 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -13,6 +13,7 @@ from app.core.seed import DEFAULT_USERS, seed_default_users
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models import User
 
 engine = create_engine(
     "sqlite://",
@@ -48,12 +49,22 @@ def client() -> Generator[TestClient, None, None]:
 def _login(client: TestClient, username: str, password: str):
     return client.post(
         "/api/auth/login",
-        json={
-            "username": username,
-            "password": password,
-            "confirm_password": password,
-        },
+        json={"username": username, "password": password},
     )
+
+
+def _register(client: TestClient, **overrides):
+    body = {
+        "username": "budi",
+        "full_name": "Budi Santoso",
+        "password": "Budi12345",
+        "confirm_password": "Budi12345",
+    }
+    body.update(overrides)
+    return client.post("/api/auth/register", json=body)
+
+
+# --- Login ---------------------------------------------------------------
 
 
 @pytest.mark.parametrize("account", DEFAULT_USERS, ids=lambda a: a["role"])
@@ -67,6 +78,14 @@ def test_login_success_for_each_role(client: TestClient, account: dict) -> None:
     assert body["access_token"]
 
 
+def test_login_only_requires_username_and_password(client: TestClient) -> None:
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "manager", "password": "Manager#123"},
+    )
+    assert response.status_code == 200, response.text
+
+
 def test_login_wrong_password(client: TestClient) -> None:
     response = _login(client, "superadmin", "WrongPass#123")
     assert response.status_code == 401
@@ -78,22 +97,10 @@ def test_login_unknown_user(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_login_confirm_password_mismatch(client: TestClient) -> None:
-    response = client.post(
-        "/api/auth/login",
-        json={
-            "username": "manager",
-            "password": "Manager#123",
-            "confirm_password": "Manager#999",
-        },
-    )
-    assert response.status_code == 422
-
-
 def test_login_short_password_rejected(client: TestClient) -> None:
     response = client.post(
         "/api/auth/login",
-        json={"username": "manager", "password": "123", "confirm_password": "123"},
+        json={"username": "manager", "password": "123"},
     )
     assert response.status_code == 422
 
@@ -101,13 +108,75 @@ def test_login_short_password_rejected(client: TestClient) -> None:
 def test_login_username_with_space_rejected(client: TestClient) -> None:
     response = client.post(
         "/api/auth/login",
-        json={
-            "username": "super admin",
-            "password": "Superadmin#123",
-            "confirm_password": "Superadmin#123",
-        },
+        json={"username": "super admin", "password": "Superadmin#123"},
     )
     assert response.status_code == 422
+
+
+# --- Register ------------------------------------------------------------
+
+
+def test_register_default_role_is_marketing(client: TestClient) -> None:
+    response = _register(client)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["username"] == "budi"
+    assert body["role"] == "marketing"
+    assert body["is_active"] is True
+    assert "hashed_password" not in body
+
+
+def test_register_with_manager_role(client: TestClient) -> None:
+    response = _register(client, username="rina", role="manager")
+    assert response.status_code == 201, response.text
+    assert response.json()["role"] == "manager"
+
+
+def test_register_superadmin_is_forbidden(client: TestClient) -> None:
+    response = _register(client, username="hacker", role="superadmin")
+    assert response.status_code == 422
+
+
+def test_register_duplicate_username_conflict(client: TestClient) -> None:
+    assert _register(client, username="superadmin").status_code == 409
+
+
+def test_register_confirm_password_mismatch(client: TestClient) -> None:
+    response = _register(client, confirm_password="Budi99999")
+    assert response.status_code == 422
+
+
+def test_register_weak_password_rejected(client: TestClient) -> None:
+    no_digit = _register(client, username="a1", password="abcdefgh", confirm_password="abcdefgh")
+    assert no_digit.status_code == 422
+    no_letter = _register(client, username="a2", password="12345678", confirm_password="12345678")
+    assert no_letter.status_code == 422
+    too_short = _register(client, username="a3", password="Ab1", confirm_password="Ab1")
+    assert too_short.status_code == 422
+
+
+def test_register_username_with_space_rejected(client: TestClient) -> None:
+    response = _register(client, username="bu di")
+    assert response.status_code == 422
+
+
+def test_registered_user_can_login(client: TestClient) -> None:
+    assert _register(client, username="sinta").status_code == 201
+    response = _login(client, "sinta", "Budi12345")
+    assert response.status_code == 200, response.text
+    assert response.json()["role"] == "marketing"
+
+
+def test_register_stores_hashed_password(client: TestClient) -> None:
+    assert _register(client, username="tono").status_code == 201
+    with TestingSessionLocal() as db:
+        user = db.scalar(select(User).where(User.username == "tono"))
+    assert user is not None
+    assert user.hashed_password != "Budi12345"
+    assert user.hashed_password.startswith("pbkdf2_sha256$")
+
+
+# --- Profil & RBAC -------------------------------------------------------
 
 
 def test_me_returns_current_user(client: TestClient) -> None:
