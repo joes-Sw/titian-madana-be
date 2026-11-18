@@ -39,7 +39,7 @@ class ScraperService:
             if hasattr(obj, key):
                 setattr(obj, key, value)
 
-    def _enrich_pemenang(self, tender: Tender) -> None:
+    def _enrich_pemenang(self, tender: Tender, jenis: str) -> None:
         self.db.execute(
             delete(Pemenang).where(Pemenang.tender_id == tender.id)
         )
@@ -47,14 +47,21 @@ class ScraperService:
             delete(SppjKontrak).where(SppjKontrak.tender_id == tender.id)
         )
 
-        html = self.client.html(ep.pemenang(tender.id), ep.LELANG_LIST)
+        if jenis == "tender":
+            pemenang_path = ep.pemenang(tender.id)
+            kontrak_path = ep.pemenang_berkontrak(tender.id)
+            referer = ep.LELANG_LIST
+        else:
+            pemenang_path = ep.pemenang_nontender(tender.id)
+            kontrak_path = ep.pemenang_berkontrak_nontender(tender.id)
+            referer = ep.NONTENDER_LIST
+
+        html = self.client.html(pemenang_path, referer)
         if html:
             for item in parser.parse_pemenang(html):
                 self.db.add(Pemenang(tender_id=tender.id, **item))
 
-        html = self.client.html(
-            ep.pemenang_berkontrak(tender.id), ep.LELANG_LIST
-        )
+        html = self.client.html(kontrak_path, referer)
         if html:
             for item in parser.parse_sppj(html):
                 self.db.add(SppjKontrak(tender_id=tender.id, **item))
@@ -80,8 +87,9 @@ class ScraperService:
             self._apply(tender, flat)
             tender.raw_jadwal = parser.dumps_tahapan(tahapan)
 
-        if jenis == "tender":
-            self._enrich_pemenang(tender)
+        # Paket tender maupun nontender punya halaman pemenang sendiri
+        # (/evaluasi/... dan /evaluasinontender/...).
+        self._enrich_pemenang(tender, jenis)
 
     def _scrape_list(
         self,
