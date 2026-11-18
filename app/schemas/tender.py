@@ -51,6 +51,7 @@ class TenderOut(BaseModel):
     nilai_hps: float | None = None
     status_tahap: str | None = None
     versi_spse: str | None = None
+    tgl_pembuatan: datetime | None = None
     tgl_mulai_pengumuman: datetime | None = None
     tgl_selesai_pengumuman: datetime | None = None
     tgl_mulai_sanggah: datetime | None = None

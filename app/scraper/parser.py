@@ -34,7 +34,10 @@ def make_soup(html: str) -> BeautifulSoup:
 def clean(text: str | None) -> str | None:
     if text is None:
         return None
-    value = re.sub(r"\s+", " ", text).strip()
+    # Cell dari datatable kadang memuat HTML (mis. <span class="badge">),
+    # buang tag-nya agar tidak ikut tersimpan sebagai bagian judul.
+    value = re.sub(r"<[^>]*>", " ", text)
+    value = re.sub(r"\s+", " ", value).strip()
     return value or None
 
 
@@ -85,6 +88,11 @@ def first_number(text: str | None) -> str | None:
 
 
 def parse_kv(soup: BeautifulSoup) -> dict[str, str]:
+    # Badge status ("Paket Gagal", "Tender Gagal", dll.) dirender sebagai
+    # <span class="badge">. Buang supaya tidak menempel pada nilai seperti judul.
+    for badge in soup.select(".badge"):
+        badge.decompose()
+
     data: dict[str, str] = {}
     for row in soup.find_all("tr"):
         cells = row.find_all(["th", "td"], recursive=False)
@@ -231,6 +239,7 @@ def parse_detail(html: str) -> dict[str, Any]:
         "metode_evaluasi": metode_evaluasi,
         "kualifikasi": kualifikasi,
         "tahun_anggaran": extract_year(kv.get("Tahun Anggaran")),
+        "tgl_pembuatan": parse_datetime(kv.get("Tanggal Pembuatan")),
         "nilai_pagu": parse_amount(kv.get("Nilai Pagu Paket")),
         "nilai_hps": parse_amount(kv.get("Nilai HPS Paket")),
         "jenis_kontrak": kv.get("Jenis Kontrak"),

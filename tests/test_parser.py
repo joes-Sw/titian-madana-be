@@ -52,6 +52,20 @@ SPPJ_HTML = """
 </table>
 """
 
+DETAIL_WITH_BADGE_HTML = """
+<table>
+  <tr>
+    <th class="bgwarning">Nama Paket</th>
+    <td colspan="3">
+      Biro Datin - Audit Surveilance
+      <span class="badge badge-warning">Paket Gagal</span>
+    </td>
+  </tr>
+  <tr><th class="bgwarning">Tanggal Pembuatan</th><td colspan="3">26 Agustus 2026</td></tr>
+  <tr><th class="bgwarning">Tahap Paket Saat Ini</th><td colspan="3">Paket Sudah Selesai</td></tr>
+</table>
+"""
+
 
 def test_parse_amount():
     assert parser.parse_amount("Rp. 14.498.579.000,00") == 14498579000.0
@@ -82,6 +96,19 @@ def test_parse_detail_double_pair_and_rup():
     assert detail["metode_pemilihan"] == "Tender"
     assert detail["metode_evaluasi"] == "Sistem Nilai"
     assert detail["kualifikasi"] == "Pascakualifikasi Dua File"
+
+
+def test_clean_strips_html_tags():
+    assert parser.clean("<b>Judul</b>   Paket") == "Judul Paket"
+    assert parser.clean('<span class="badge">Sta</span>tus') == "Sta tus"
+
+
+def test_parse_detail_drops_badge_and_reads_created_date():
+    detail = parser.parse_detail(DETAIL_WITH_BADGE_HTML)
+    # teks badge "Paket Gagal" tidak boleh menempel pada judul
+    assert detail["judul"] == "Biro Datin - Audit Surveilance"
+    assert detail["tgl_pembuatan"] == datetime(2026, 8, 26)
+    assert detail["status_tahap"] == "Paket Sudah Selesai"
 
 
 def test_parse_jadwal_flatten():

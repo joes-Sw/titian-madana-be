@@ -30,6 +30,7 @@ class Tender(Base):
     status_tahap: Mapped[str | None] = mapped_column(Text, index=True)
     versi_spse: Mapped[str | None] = mapped_column(String(16))
 
+    tgl_pembuatan: Mapped[datetime | None] = mapped_column(DateTime)
     tgl_mulai_pengumuman: Mapped[datetime | None] = mapped_column(DateTime)
     tgl_selesai_pengumuman: Mapped[datetime | None] = mapped_column(DateTime)
     tgl_mulai_sanggah: Mapped[datetime | None] = mapped_column(DateTime)

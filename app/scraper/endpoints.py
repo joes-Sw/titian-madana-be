@@ -21,6 +21,14 @@ def pemenang_berkontrak(tender_id: str) -> str:
     return f"/evaluasi/{tender_id}/pemenangberkontrak"
 
 
+def pemenang_nontender(tender_id: str) -> str:
+    return f"/evaluasinontender/{tender_id}/pemenang"
+
+
+def pemenang_berkontrak_nontender(tender_id: str) -> str:
+    return f"/evaluasinontender/{tender_id}/pemenangberkontrak"
+
+
 def pengumumanpl(tender_id: str) -> str:
     return f"/nontender/{tender_id}/pengumumanpl"
 
